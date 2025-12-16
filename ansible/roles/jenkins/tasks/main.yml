@@ -1,0 +1,72 @@
+# roles/jenkins/tasks/main.yml - Jenkins Installation Tasks
+# Author: AbayK
+# Description: Idempotent Jenkins installation and configuration
+
+---
+- name: Add Jenkins GPG key
+  apt_key:
+    url: https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Add Jenkins repository
+  apt_repository:
+    repo: "deb https://pkg.jenkins.io/debian-stable binary/"
+    state: present
+    filename: jenkins
+  when: ansible_os_family == "Debian"
+
+- name: Install Jenkins
+  apt:
+    name: jenkins
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+  notify: Restart Jenkins
+
+- name: Ensure Jenkins service is started and enabled
+  systemd:
+    name: jenkins
+    state: started
+    enabled: yes
+
+- name: Wait for Jenkins to start
+  wait_for:
+    port: "{{ jenkins_port }}"
+    delay: 10
+    timeout: 120
+
+- name: Add Jenkins user to Docker group
+  user:
+    name: jenkins
+    groups: docker
+    append: yes
+  notify: Restart Jenkins
+
+- name: Get Jenkins initial admin password
+  command: cat /var/lib/jenkins/secrets/initialAdminPassword
+  register: jenkins_password
+  changed_when: false
+  ignore_errors: yes
+
+- name: Display Jenkins initial password
+  debug:
+    msg: |
+      Jenkins Initial Admin Password: {{ jenkins_password.stdout | default('Already configured or not available') }}
+      Access Jenkins at: http://{{ ansible_default_ipv4.address | default('localhost') }}:{{ jenkins_port }}
+  when: jenkins_password.rc == 0
+
+- name: Create Jenkins jobs directory
+  file:
+    path: "{{ jenkins_home }}/jobs"
+    state: directory
+    owner: jenkins
+    group: jenkins
+    mode: '0755'
+
+- name: Configure Jenkins environment variables
+  lineinfile:
+    path: /etc/default/jenkins
+    regexp: '^JAVA_ARGS='
+    line: 'JAVA_ARGS="-Djava.awt.headless=true -Xmx512m"'
+  notify: Restart Jenkins

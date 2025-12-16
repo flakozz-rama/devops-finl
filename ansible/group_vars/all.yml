@@ -1,0 +1,36 @@
+# group_vars/all.yml - Global Variables
+# Author: AbayK
+# Description: Variables used across all playbooks
+
+---
+# System Configuration
+devops_user: devops
+devops_group: devops
+
+# Docker Configuration
+docker_version: "latest"
+docker_compose_version: "2.24.0"
+
+# Jenkins Configuration
+jenkins_port: 8080
+jenkins_home: /var/lib/jenkins
+
+# Kubernetes Configuration
+minikube_version: "latest"
+kubectl_version: "stable"
+
+# Application Configuration
+app_name: todo-app
+app_port: 8080
+app_image: "abayk/todo-app:latest"
+
+# Database Configuration
+db_name: tododb
+db_user: todouser
+# db_password is encrypted with Ansible Vault
+
+# Git Repository
+git_repo_url: "https://github.com/abayk/devops-final.git"
+
+# Java Configuration
+java_version: "17"

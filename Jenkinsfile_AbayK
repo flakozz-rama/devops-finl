@@ -1,0 +1,277 @@
+// Jenkinsfile_AbayK - Declarative Jenkins Pipeline for ToDo Application
+// Author: AbayK
+// Description: Complete CI/CD pipeline with build, test, and deployment stages
+
+pipeline {
+    agent any
+
+    environment {
+        // Application Configuration
+        APP_NAME = 'todo-app'
+        DOCKER_IMAGE = "abayk/todo-app"
+        DOCKER_TAG = "${BUILD_NUMBER}"
+
+        // Docker Registry Credentials (stored in Jenkins)
+        DOCKER_CREDENTIALS = credentials('docker-hub-credentials')
+
+        // Git Configuration
+        GIT_REPO = 'https://github.com/abayk/devops-final.git'
+
+        // Kubernetes Configuration
+        KUBECONFIG = credentials('kubeconfig')
+    }
+
+    options {
+        timestamps()
+        timeout(time: 30, unit: 'MINUTES')
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+
+    stages {
+        // =====================================================================
+        // Stage 1: Git Checkout
+        // =====================================================================
+        stage('Checkout') {
+            steps {
+                echo '=== Checking out source code ==='
+                checkout scm
+
+                script {
+                    // Get Git commit info
+                    env.GIT_COMMIT_SHORT = sh(
+                        script: 'git rev-parse --short HEAD',
+                        returnStdout: true
+                    ).trim()
+                    env.GIT_BRANCH_NAME = sh(
+                        script: 'git rev-parse --abbrev-ref HEAD',
+                        returnStdout: true
+                    ).trim()
+                }
+                echo "Branch: ${env.GIT_BRANCH_NAME}, Commit: ${env.GIT_COMMIT_SHORT}"
+            }
+        }
+
+        // =====================================================================
+        // Stage 2: Build with Gradle Wrapper
+        // =====================================================================
+        stage('Build') {
+            steps {
+                echo '=== Building application with Gradle Wrapper ==='
+                dir('app') {
+                    sh 'chmod +x gradlew'
+                    sh './gradlew clean build -x test --no-daemon'
+                }
+            }
+            post {
+                success {
+                    echo 'Build completed successfully!'
+                    archiveArtifacts artifacts: 'app/build/libs/*.jar', fingerprint: true
+                }
+                failure {
+                    echo 'Build failed!'
+                }
+            }
+        }
+
+        // =====================================================================
+        // Stage 3: Run Tests
+        // =====================================================================
+        stage('Test') {
+            steps {
+                echo '=== Running tests with Gradle Wrapper ==='
+                dir('app') {
+                    sh './gradlew test --no-daemon'
+                }
+            }
+            post {
+                always {
+                    // Publish test results
+                    junit allowEmptyResults: true, testResults: 'app/build/test-results/test/*.xml'
+
+                    // Publish test reports
+                    publishHTML(target: [
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'app/build/reports/tests/test',
+                        reportFiles: 'index.html',
+                        reportName: 'Test Report'
+                    ])
+                }
+                failure {
+                    echo 'Tests failed! Pipeline will be stopped.'
+                }
+            }
+        }
+
+        // =====================================================================
+        // Stage 4: Static Code Analysis (Optional)
+        // =====================================================================
+        stage('Code Analysis') {
+            when {
+                anyOf {
+                    branch 'main'
+                    branch 'develop'
+                }
+            }
+            steps {
+                echo '=== Running static code analysis ==='
+                dir('app') {
+                    // Checkstyle analysis (if configured)
+                    sh './gradlew check --no-daemon || true'
+                }
+            }
+            post {
+                always {
+                    // Archive checkstyle reports if available
+                    archiveArtifacts artifacts: 'app/build/reports/**/*', allowEmptyArchive: true
+                }
+            }
+        }
+
+        // =====================================================================
+        // Stage 5: Build Docker Image
+        // =====================================================================
+        stage('Docker Build') {
+            steps {
+                echo '=== Building Docker image ==='
+                script {
+                    // Build with dynamic version tag
+                    def imageTag = "${DOCKER_IMAGE}:${DOCKER_TAG}"
+                    def latestTag = "${DOCKER_IMAGE}:latest"
+
+                    sh """
+                        docker build -t ${imageTag} -f docker/Dockerfile_AbayK .
+                        docker tag ${imageTag} ${latestTag}
+                    """
+
+                    // Display image info
+                    sh "docker images | grep ${DOCKER_IMAGE}"
+                    sh "docker history ${imageTag}"
+                }
+            }
+            post {
+                failure {
+                    echo 'Docker image build failed!'
+                }
+            }
+        }
+
+        // =====================================================================
+        // Stage 6: Push Docker Image to Registry
+        // =====================================================================
+        stage('Docker Push') {
+            when {
+                anyOf {
+                    branch 'main'
+                    branch 'develop'
+                }
+            }
+            steps {
+                echo '=== Pushing Docker image to registry ==='
+                script {
+                    withCredentials([usernamePassword(
+                        credentialsId: 'docker-hub-credentials',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )]) {
+                        sh """
+                            echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
+                            docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
+                            docker push ${DOCKER_IMAGE}:latest
+                            docker logout
+                        """
+                    }
+                }
+            }
+            post {
+                failure {
+                    echo 'Docker push failed!'
+                }
+            }
+        }
+
+        // =====================================================================
+        // Stage 7: Deploy to Kubernetes (main branch only)
+        // =====================================================================
+        stage('Deploy to Kubernetes') {
+            when {
+                branch 'main'
+            }
+            steps {
+                echo '=== Deploying to Kubernetes ==='
+                script {
+                    // Update image tag in deployment
+                    sh """
+                        sed -i 's|image: abayk/todo-app:.*|image: ${DOCKER_IMAGE}:${DOCKER_TAG}|g' k8s/deployment_AbayK.yaml
+                    """
+
+                    // Apply Kubernetes manifests
+                    sh """
+                        kubectl apply -f k8s/configmap_AbayK.yaml
+                        kubectl apply -f k8s/secret_AbayK.yaml
+                        kubectl apply -f k8s/pvc_AbayK.yaml
+                        kubectl apply -f k8s/deployment_AbayK.yaml
+                        kubectl apply -f k8s/service_AbayK.yaml
+                        kubectl apply -f k8s/hpa_AbayK.yaml
+                    """
+
+                    // Wait for deployment to complete
+                    sh 'kubectl rollout status deployment/todo-app --timeout=300s'
+                }
+            }
+            post {
+                success {
+                    echo 'Deployment to Kubernetes successful!'
+                }
+                failure {
+                    echo 'Deployment failed! Rolling back...'
+                    sh 'kubectl rollout undo deployment/todo-app || true'
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // Post-build Actions
+    // =========================================================================
+    post {
+        always {
+            echo '=== Pipeline completed ==='
+
+            // Clean workspace
+            cleanWs()
+
+            // Clean Docker images to save space
+            sh 'docker image prune -f || true'
+        }
+
+        success {
+            echo '=== Pipeline SUCCESS ==='
+
+            // Send notification (email or Slack)
+            script {
+                if (env.GIT_BRANCH_NAME == 'main') {
+                    echo "Production deployment completed for build #${BUILD_NUMBER}"
+                    // mail to: 'team@example.com',
+                    //      subject: "SUCCESS: ${APP_NAME} - Build #${BUILD_NUMBER}",
+                    //      body: "Build succeeded! Check ${BUILD_URL}"
+                }
+            }
+        }
+
+        failure {
+            echo '=== Pipeline FAILED ==='
+
+            // Send failure notification
+            // mail to: 'team@example.com',
+            //      subject: "FAILURE: ${APP_NAME} - Build #${BUILD_NUMBER}",
+            //      body: "Build failed! Check ${BUILD_URL}"
+        }
+
+        unstable {
+            echo '=== Pipeline UNSTABLE ==='
+        }
+    }
+}

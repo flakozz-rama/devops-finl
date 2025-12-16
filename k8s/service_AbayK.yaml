@@ -1,0 +1,62 @@
+# service_AbayK.yaml - Kubernetes Services for ToDo Application
+# Author: AbayK
+# Description: Service definitions for application and database
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: todo-app-service
+  namespace: default
+  labels:
+    app: todo-app
+    author: AbayK
+spec:
+  type: NodePort
+  selector:
+    app: todo-app
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+      nodePort: 30080
+
+---
+# ClusterIP Service (internal access only)
+apiVersion: v1
+kind: Service
+metadata:
+  name: todo-app-internal
+  namespace: default
+  labels:
+    app: todo-app
+    author: AbayK
+spec:
+  type: ClusterIP
+  selector:
+    app: todo-app
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+
+---
+# PostgreSQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: todo-postgres
+  namespace: default
+  labels:
+    app: todo-postgres
+    author: AbayK
+spec:
+  type: ClusterIP
+  selector:
+    app: todo-postgres
+  ports:
+    - name: postgres
+      protocol: TCP
+      port: 5432
+      targetPort: 5432

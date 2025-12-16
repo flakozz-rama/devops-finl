@@ -1,0 +1,84 @@
+# deploy_k8s_AbayK.yml - Deploy Application to Kubernetes
+# Author: AbayK
+# Description: Deploy ToDo application to Kubernetes cluster
+
+---
+- name: Deploy ToDo Application to Kubernetes
+  hosts: kubernetes_servers
+  become: yes
+  gather_facts: yes
+
+  vars:
+    k8s_manifests_path: "../k8s"
+    app_namespace: default
+
+  tasks:
+    - name: Check if kubectl is available
+      command: kubectl version --client
+      register: kubectl_check
+      changed_when: false
+      failed_when: false
+
+    - name: Fail if kubectl is not installed
+      fail:
+        msg: "kubectl is not installed. Please run the main playbook first."
+      when: kubectl_check.rc != 0
+
+    - name: Check cluster connectivity
+      command: kubectl cluster-info
+      register: cluster_info
+      changed_when: false
+      failed_when: false
+
+    - name: Display cluster status
+      debug:
+        var: cluster_info.stdout_lines
+      when: cluster_info.rc == 0
+
+    - name: Apply ConfigMap
+      command: kubectl apply -f {{ k8s_manifests_path }}/configmap_AbayK.yaml
+      register: configmap_result
+      changed_when: "'created' in configmap_result.stdout or 'configured' in configmap_result.stdout"
+
+    - name: Apply Secret
+      command: kubectl apply -f {{ k8s_manifests_path }}/secret_AbayK.yaml
+      register: secret_result
+      changed_when: "'created' in secret_result.stdout or 'configured' in secret_result.stdout"
+
+    - name: Apply PVC
+      command: kubectl apply -f {{ k8s_manifests_path }}/pvc_AbayK.yaml
+      register: pvc_result
+      changed_when: "'created' in pvc_result.stdout or 'configured' in pvc_result.stdout"
+
+    - name: Apply Deployment
+      command: kubectl apply -f {{ k8s_manifests_path }}/deployment_AbayK.yaml
+      register: deployment_result
+      changed_when: "'created' in deployment_result.stdout or 'configured' in deployment_result.stdout"
+
+    - name: Apply Service
+      command: kubectl apply -f {{ k8s_manifests_path }}/service_AbayK.yaml
+      register: service_result
+      changed_when: "'created' in service_result.stdout or 'configured' in service_result.stdout"
+
+    - name: Apply HPA
+      command: kubectl apply -f {{ k8s_manifests_path }}/hpa_AbayK.yaml
+      register: hpa_result
+      changed_when: "'created' in hpa_result.stdout or 'configured' in hpa_result.stdout"
+
+    - name: Wait for deployment to be ready
+      command: kubectl rollout status deployment/todo-app --timeout=300s
+      register: rollout_status
+      changed_when: false
+
+    - name: Display deployment status
+      debug:
+        var: rollout_status.stdout_lines
+
+    - name: Get all resources
+      command: kubectl get all -l app=todo-app
+      register: all_resources
+      changed_when: false
+
+    - name: Display all resources
+      debug:
+        var: all_resources.stdout_lines

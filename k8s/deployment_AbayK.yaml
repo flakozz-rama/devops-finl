@@ -1,0 +1,164 @@
+# deployment_AbayK.yaml - Kubernetes Deployment for ToDo Application
+# Author: AbayK
+# Description: Production-ready deployment with resource limits and health probes
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todo-app
+  namespace: default
+  labels:
+    app: todo-app
+    author: AbayK
+    version: "1.0.0"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: todo-app
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: todo-app
+        version: "1.0.0"
+    spec:
+      containers:
+        - name: todo-app
+          image: abayk/todo-app:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+
+          # Resource Limits and Requests
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
+          # Environment Variables from ConfigMap
+          envFrom:
+            - configMapRef:
+                name: todo-app-config
+
+          # Environment Variables from Secret
+          env:
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: todo-app-secret
+                  key: DB_USERNAME
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: todo-app-secret
+                  key: DB_PASSWORD
+
+          # Liveness Probe - Restarts container if unhealthy
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          # Readiness Probe - Removes from service if not ready
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+      # Pod restart policy
+      restartPolicy: Always
+
+---
+# PostgreSQL Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todo-postgres
+  namespace: default
+  labels:
+    app: todo-postgres
+    author: AbayK
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: todo-postgres
+  template:
+    metadata:
+      labels:
+        app: todo-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: todo-app-config
+                  key: DB_NAME
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: todo-app-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: todo-app-secret
+                  key: POSTGRES_PASSWORD
+
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - todouser
+            initialDelaySeconds: 30
+            periodSeconds: 10
+
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - todouser
+            initialDelaySeconds: 5
+            periodSeconds: 5
+
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: postgres-pvc

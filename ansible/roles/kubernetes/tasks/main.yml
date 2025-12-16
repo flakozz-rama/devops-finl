@@ -1,0 +1,86 @@
+# roles/kubernetes/tasks/main.yml - Kubernetes Installation Tasks
+# Author: AbayK
+# Description: Install kubectl and Minikube/Kind
+
+---
+- name: Add Kubernetes GPG key
+  apt_key:
+    url: https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Add Kubernetes repository
+  apt_repository:
+    repo: "deb https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /"
+    state: present
+    filename: kubernetes
+  when: ansible_os_family == "Debian"
+
+- name: Install kubectl
+  apt:
+    name: kubectl
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Verify kubectl installation
+  command: kubectl version --client
+  register: kubectl_version_output
+  changed_when: false
+
+- name: Display kubectl version
+  debug:
+    var: kubectl_version_output.stdout_lines
+
+- name: Download Minikube
+  get_url:
+    url: https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+    dest: /usr/local/bin/minikube
+    mode: '0755'
+
+- name: Verify Minikube installation
+  command: minikube version
+  register: minikube_version_output
+  changed_when: false
+
+- name: Display Minikube version
+  debug:
+    var: minikube_version_output.stdout_lines
+
+- name: Download Kind
+  get_url:
+    url: https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+    dest: /usr/local/bin/kind
+    mode: '0755'
+
+- name: Verify Kind installation
+  command: kind version
+  register: kind_version_output
+  changed_when: false
+
+- name: Display Kind version
+  debug:
+    var: kind_version_output.stdout_lines
+
+- name: Create kubectl config directory for devops user
+  file:
+    path: "/home/{{ devops_user }}/.kube"
+    state: directory
+    owner: "{{ devops_user }}"
+    group: "{{ devops_group }}"
+    mode: '0755'
+
+- name: Copy Kubernetes manifests to project directory
+  copy:
+    src: "{{ item }}"
+    dest: /opt/devops-project/k8s/
+    owner: "{{ devops_user }}"
+    group: "{{ devops_group }}"
+    mode: '0644'
+  loop:
+    - ../../../k8s/deployment_AbayK.yaml
+    - ../../../k8s/service_AbayK.yaml
+    - ../../../k8s/configmap_AbayK.yaml
+    - ../../../k8s/secret_AbayK.yaml
+    - ../../../k8s/hpa_AbayK.yaml
+  ignore_errors: yes

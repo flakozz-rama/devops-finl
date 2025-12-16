@@ -1,0 +1,72 @@
+# Dockerfile_AbayK - Multi-stage build for Spring Boot ToDo Application
+# Author: AbayK
+# Description: Optimized multi-stage Docker build with security best practices
+
+# =============================================================================
+# Stage 1: Build Stage
+# =============================================================================
+FROM gradle:8.5-jdk17 AS builder
+
+LABEL maintainer="AbayK"
+LABEL stage="builder"
+
+WORKDIR /app
+
+# Copy Gradle wrapper and build files first (better layer caching)
+COPY app/gradlew app/gradlew
+COPY app/gradle app/gradle
+COPY app/build.gradle app/build.gradle
+COPY app/settings.gradle app/settings.gradle
+
+# Make gradlew executable
+RUN chmod +x gradlew
+
+# Download dependencies (cached layer)
+RUN ./gradlew dependencies --no-daemon || true
+
+# Copy source code
+COPY app/src app/src
+
+# Build the application using Gradle Wrapper
+RUN ./gradlew clean build -x test --no-daemon
+
+# Verify JAR was created
+RUN ls -la build/libs/
+
+# =============================================================================
+# Stage 2: Runtime Stage
+# =============================================================================
+FROM eclipse-temurin:17-jre-alpine AS runtime
+
+LABEL maintainer="AbayK"
+LABEL version="1.0.0"
+LABEL description="Spring Boot ToDo Application"
+
+# Security: Create non-root user
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -u 1001 -S appuser -G appgroup
+
+WORKDIR /app
+
+# Copy JAR from builder stage
+COPY --from=builder /app/build/libs/todo-app.jar app.jar
+
+# Change ownership to non-root user
+RUN chown -R appuser:appgroup /app
+
+# Switch to non-root user
+USER appuser
+
+# Expose application port
+EXPOSE 8080
+
+# Environment variables for configuration
+ENV JAVA_OPTS="-Xms256m -Xmx512m -XX:+UseContainerSupport"
+ENV SERVER_PORT=8080
+
+# Health check using Spring Boot Actuator
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/actuator/health || exit 1
+
+# Run the application
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]

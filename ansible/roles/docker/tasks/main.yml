@@ -1,0 +1,90 @@
+# roles/docker/tasks/main.yml - Docker Installation Tasks
+# Author: AbayK
+# Description: Idempotent Docker and Docker Compose installation
+
+---
+- name: Remove old Docker versions
+  apt:
+    name:
+      - docker
+      - docker-engine
+      - docker.io
+      - containerd
+      - runc
+    state: absent
+  when: ansible_os_family == "Debian"
+
+- name: Install Docker prerequisites
+  apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Add Docker GPG key
+  apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Add Docker repository
+  apt_repository:
+    repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    state: present
+    filename: docker
+  when: ansible_os_family == "Debian"
+
+- name: Install Docker CE
+  apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+  notify: Restart Docker
+
+- name: Ensure Docker service is started and enabled
+  systemd:
+    name: docker
+    state: started
+    enabled: yes
+
+- name: Add users to docker group
+  user:
+    name: "{{ item }}"
+    groups: docker
+    append: yes
+  loop:
+    - "{{ devops_user }}"
+    - jenkins
+  ignore_errors: yes
+
+- name: Install Docker Compose standalone
+  get_url:
+    url: "https://github.com/docker/compose/releases/download/v{{ docker_compose_version }}/docker-compose-linux-x86_64"
+    dest: /usr/local/bin/docker-compose
+    mode: '0755'
+
+- name: Verify Docker installation
+  command: docker --version
+  register: docker_version_output
+  changed_when: false
+
+- name: Verify Docker Compose installation
+  command: docker-compose --version
+  register: compose_version_output
+  changed_when: false
+
+- name: Display Docker versions
+  debug:
+    msg:
+      - "Docker: {{ docker_version_output.stdout }}"
+      - "Docker Compose: {{ compose_version_output.stdout }}"

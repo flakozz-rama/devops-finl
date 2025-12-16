@@ -1,0 +1,75 @@
+# roles/common/tasks/main.yml - Common Setup Tasks
+# Author: AbayK
+# Description: Base system configuration and dependencies
+
+---
+- name: Install common packages
+  apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+      - software-properties-common
+      - wget
+      - unzip
+      - git
+      - vim
+      - htop
+      - net-tools
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Create DevOps user
+  user:
+    name: "{{ devops_user }}"
+    groups: sudo
+    shell: /bin/bash
+    create_home: yes
+    state: present
+
+- name: Add DevOps user to sudoers
+  lineinfile:
+    path: /etc/sudoers.d/{{ devops_user }}
+    line: "{{ devops_user }} ALL=(ALL) NOPASSWD:ALL"
+    create: yes
+    mode: '0440'
+    validate: 'visudo -cf %s'
+
+- name: Create project directory structure
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ devops_user }}"
+    group: "{{ devops_group }}"
+    mode: '0755'
+  loop:
+    - /opt/devops-project
+    - /opt/devops-project/app
+    - /opt/devops-project/docker
+    - /opt/devops-project/k8s
+    - /opt/devops-project/ansible
+    - /opt/devops-project/scripts
+
+- name: Install Java 17
+  apt:
+    name: openjdk-17-jdk
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Verify Java installation
+  command: java -version
+  register: java_version_output
+  changed_when: false
+
+- name: Display Java version
+  debug:
+    var: java_version_output.stderr_lines
+
+- name: Set JAVA_HOME environment variable
+  lineinfile:
+    path: /etc/environment
+    line: 'JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64'
+    create: yes

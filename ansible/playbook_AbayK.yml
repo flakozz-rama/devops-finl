@@ -1,0 +1,37 @@
+# playbook_AbayK.yml - Main Ansible Playbook
+# Author: AbayK
+# Description: Complete infrastructure automation playbook
+
+---
+- name: DevOps Infrastructure Setup
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  vars_files:
+    - group_vars/all.yml
+
+  pre_tasks:
+    - name: Update apt cache (Debian/Ubuntu)
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+
+    - name: Display system information
+      debug:
+        msg: |
+          Hostname: {{ ansible_hostname }}
+          OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          Architecture: {{ ansible_architecture }}
+
+  roles:
+    - common
+    - docker
+    - jenkins
+    - kubernetes
+
+  post_tasks:
+    - name: Display completion message
+      debug:
+        msg: "DevOps infrastructure setup completed successfully!"

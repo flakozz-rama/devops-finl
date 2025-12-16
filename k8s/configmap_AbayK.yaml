@@ -1,0 +1,27 @@
+# configmap_AbayK.yaml - Kubernetes ConfigMap for ToDo Application
+# Author: AbayK
+# Description: Application configuration stored in ConfigMap
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: todo-app-config
+  namespace: default
+  labels:
+    app: todo-app
+    author: AbayK
+data:
+  # Database Configuration
+  DB_HOST: "todo-postgres"
+  DB_PORT: "5432"
+  DB_NAME: "tododb"
+
+  # Application Configuration
+  SERVER_PORT: "8080"
+  SPRING_PROFILES_ACTIVE: "kubernetes"
+
+  # Logging Configuration
+  LOG_LEVEL: "INFO"
+
+  # JVM Options
+  JAVA_OPTS: "-Xms256m -Xmx512m -XX:+UseContainerSupport"

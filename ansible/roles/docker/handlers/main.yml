@@ -1,0 +1,9 @@
+# roles/docker/handlers/main.yml - Docker Handlers
+# Author: AbayK
+
+---
+- name: Restart Docker
+  systemd:
+    name: docker
+    state: restarted
+    daemon_reload: yes
