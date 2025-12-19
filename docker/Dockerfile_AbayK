@@ -13,10 +13,10 @@ LABEL stage="builder"
 WORKDIR /app
 
 # Copy Gradle wrapper and build files first (better layer caching)
-COPY app/gradlew app/gradlew
-COPY app/gradle app/gradle
-COPY app/build.gradle app/build.gradle
-COPY app/settings.gradle app/settings.gradle
+COPY app/gradlew ./gradlew
+COPY app/gradle ./gradle
+COPY app/build.gradle ./build.gradle
+COPY app/settings.gradle ./settings.gradle
 
 # Make gradlew executable
 RUN chmod +x gradlew
@@ -25,7 +25,7 @@ RUN chmod +x gradlew
 RUN ./gradlew dependencies --no-daemon || true
 
 # Copy source code
-COPY app/src app/src
+COPY app/src ./src
 
 # Build the application using Gradle Wrapper
 RUN ./gradlew clean build -x test --no-daemon
