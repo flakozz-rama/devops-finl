@@ -4,35 +4,49 @@
 ## Architecture Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         DevOps Pipeline Architecture                      │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                           │
-│   ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────────────┐  │
-│   │   Git    │───▶│ Jenkins  │───▶│  Docker  │───▶│   Kubernetes     │  │
-│   │  (SCM)   │    │  (CI/CD) │    │ Registry │    │   (Deployment)   │  │
-│   └──────────┘    └──────────┘    └──────────┘    └──────────────────┘  │
-│        │               │               │                    │            │
-│        │               │               │                    ▼            │
-│        │               │               │          ┌──────────────────┐  │
-│        │               │               │          │   ┌──────────┐   │  │
-│        ▼               ▼               │          │   │ ToDo App │   │  │
-│   ┌──────────┐    ┌──────────┐        │          │   │ (Pod x2) │   │  │
-│   │  Source  │    │  Build   │        │          │   └──────────┘   │  │
-│   │   Code   │    │  & Test  │        │          │        │         │  │
-│   └──────────┘    └──────────┘        │          │        ▼         │  │
-│                                        │          │   ┌──────────┐   │  │
-│                                        │          │   │PostgreSQL│   │  │
-│                                        │          │   │  (Pod)   │   │  │
-│                                        │          │   └──────────┘   │  │
-│                                        │          └──────────────────┘  │
-│                                                                          │
-│   ┌──────────────────────────────────────────────────────────────────┐  │
-│   │                    Ansible (Infrastructure Automation)            │  │
-│   └──────────────────────────────────────────────────────────────────┘  │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
++------------------------------------------------------------------+
+|                    DevOps Pipeline Architecture                    |
++------------------------------------------------------------------+
+|                                                                    |
+|   +--------+    +----------+    +--------+    +----------------+  |
+|   |  Git   |--->| Jenkins  |--->| Docker |--->|  Kubernetes    |  |
+|   | (SCM)  |    | (CI/CD)  |    |Registry|    | (Deployment)   |  |
+|   +--------+    +----------+    +--------+    +----------------+  |
+|       |              |              |                |             |
+|       v              v              |                v             |
+|   +--------+    +----------+       |        +----------------+    |
+|   | Source |    |  Build   |       |        |  +-----------+ |    |
+|   |  Code  |    |  & Test  |       |        |  | ToDo App  | |    |
+|   +--------+    +----------+       |        |  | (Pod x2)  | |    |
+|                                    |        |  +-----------+ |    |
+|                                    |        |       |        |    |
+|                                    |        |       v        |    |
+|                                    |        |  +-----------+ |    |
+|                                    |        |  |PostgreSQL | |    |
+|                                    |        |  |  (Pod)    | |    |
+|                                    |        |  +-----------+ |    |
+|                                    |        +----------------+    |
+|                                                                    |
+|   +--------------------------------------------------------------+|
+|   |              Ansible (Infrastructure Automation)              ||
+|   +--------------------------------------------------------------+|
++------------------------------------------------------------------+
 ```
+
+## Quick Start (After VM Restart)
+
+```bash
+# Start all services
+cd ~/opt/devops-project/docker && docker compose -f docker-compose_AbayK.yml up -d && minikube start --driver=docker && sleep 30 && kubectl get pods
+
+# Check services
+docker ps && kubectl get pods && kubectl get svc && sudo systemctl status jenkins
+```
+
+**Access URLs (VM IP: 192.168.0.42):**
+- Jenkins: http://192.168.0.42:8081
+- Todo App (Docker): http://192.168.0.42:8080
+- Todo App (K8s): http://192.168.0.42:30080
 
 ## Project Structure
 
@@ -45,7 +59,7 @@ devops-final/
 │   ├── build.gradle             # Gradle build configuration
 │   └── gradlew                  # Gradle wrapper
 ├── docker/                       # Docker Configuration
-│   ├── Dockerfile_AbayK         # Multi-stage Dockerfile
+│   ├── Dockerfile_AbayK         # Multi-stage Dockerfile (ARM64)
 │   ├── docker-compose_AbayK.yml # Docker Compose configuration
 │   └── .env.example             # Environment variables template
 ├── k8s/                          # Kubernetes Manifests
@@ -59,173 +73,193 @@ devops-final/
 │   ├── inventory_AbayK.ini      # Inventory file
 │   ├── playbook_AbayK.yml       # Main playbook
 │   ├── deploy_k8s_AbayK.yml     # K8s deployment playbook
-│   ├── vault_secrets.yml        # Ansible Vault template
-│   ├── group_vars/              # Group variables
 │   └── roles/                   # Ansible roles
 ├── scripts/                      # Setup scripts
 │   ├── setup_vm_AbayK.sh        # VM setup script
-│   └── install_docker_AbayK.sh  # Docker installation
+│   ├── install_docker_AbayK.sh  # Docker installation
+│   └── install_all_AbayK.sh     # Complete stack installation
 ├── Jenkinsfile_AbayK            # Jenkins pipeline
-├── .gitignore                   # Git ignore rules
 └── README.md                    # This file
 ```
 
-## Step-by-Step Setup Instructions
+## Complete Setup Guide
 
-### Part 0: Linux VM Setup
+### Part 0: VM Setup (UTM + Ubuntu Server)
 
-1. **Create Ubuntu VM** (20.04+ or 22.04+)
+1. **Create VM in UTM:**
+   - Ubuntu Server 24.04 ARM64
+   - RAM: 4096 MB (minimum 2GB)
+   - Disk: 20 GB
+   - Network: Bridged
+
+2. **Clone project:**
    ```bash
-   # After VM creation, run the setup script
-   sudo ./scripts/setup_vm_AbayK.sh
+   git clone https://github.com/flakozz-rama/devops-finl.git ~/opt/devops-project
+   cd ~/opt/devops-project
    ```
 
-2. **Configure SSH Keys**
+3. **Run complete installation:**
    ```bash
-   # Generate SSH key
-   ssh-keygen -t ed25519 -C "your_email@example.com"
-
-   # Copy public key to authorized_keys
-   cat ~/.ssh/id_ed25519.pub >> ~/.ssh/authorized_keys
+   chmod +x scripts/*.sh
+   sudo ./scripts/install_all_AbayK.sh
    ```
 
-3. **Verify Firewall**
+   This installs: Docker, Ansible, Jenkins, kubectl, Minikube
+
+4. **Fix Jenkins port (if 8080 is occupied):**
    ```bash
-   sudo ufw status verbose
+   sudo mkdir -p /etc/systemd/system/jenkins.service.d
+   echo -e '[Service]\nEnvironment="JENKINS_PORT=8081"' | sudo tee /etc/systemd/system/jenkins.service.d/override.conf
+   sudo systemctl daemon-reload
+   sudo systemctl restart jenkins
+   ```
+
+5. **Configure firewall:**
+   ```bash
+   sudo ufw allow ssh
+   sudo ufw allow 8080/tcp
+   sudo ufw allow 8081/tcp
+   sudo ufw allow 30080/tcp
+   sudo ufw enable
    ```
 
 ### Part 1: Docker Setup
 
-1. **Install Docker**
+```bash
+# Build image
+cd ~/opt/devops-project
+docker build -t abayk/todo-app:1.0.0 -f docker/Dockerfile_AbayK .
+
+# Run with Docker Compose
+cd docker
+cp .env.example .env
+docker compose -f docker-compose_AbayK.yml up -d
+
+# Verify
+docker ps
+curl http://localhost:8080/actuator/health
+curl http://localhost:8080/api/todos
+```
+
+### Part 2: Kubernetes Setup
+
+```bash
+# Start Minikube
+minikube start --driver=docker
+
+# Load image to Minikube
+minikube image load abayk/todo-app:1.0.0
+
+# Deploy application
+cd ~/opt/devops-project
+kubectl apply -f k8s/
+
+# Verify
+kubectl get pods
+kubectl get svc
+kubectl get deployments
+kubectl get hpa
+
+# Access application
+kubectl port-forward --address 0.0.0.0 svc/todo-app-service 30080:8080
+```
+
+### Part 3: Jenkins Setup
+
+1. **Access Jenkins:** http://192.168.0.42:8081
+
+2. **Get initial password:**
    ```bash
-   sudo ./scripts/install_docker_AbayK.sh
+   sudo cat /var/lib/jenkins/secrets/initialAdminPassword
    ```
 
-2. **Build Docker Image**
-   ```bash
-   cd /path/to/devops-final
-   docker build -t abayk/todo-app:1.0.0 -f docker/Dockerfile_AbayK .
-   ```
+3. **Install plugins:** Pipeline, Git, Docker Pipeline
 
-3. **Run with Docker Compose**
-   ```bash
-   cd docker
-   cp .env.example .env
-   docker-compose -f docker-compose_AbayK.yml up -d
-   ```
-
-4. **Verify Application**
-   ```bash
-   curl http://localhost:8080/actuator/health
-   curl http://localhost:8080/api/todos
-   ```
-
-### Part 2: Jenkins Setup
-
-1. **Install Jenkins on VM**
-   ```bash
-   ansible-playbook -i ansible/inventory_AbayK.ini ansible/playbook_AbayK.yml --tags jenkins
-   ```
-
-2. **Access Jenkins**
-   - URL: `http://<VM_IP>:8080`
-   - Get initial password: `sudo cat /var/lib/jenkins/secrets/initialAdminPassword`
-
-3. **Configure Jenkins**
-   - Install recommended plugins
-   - Install additional plugins: Pipeline, Git, Docker
-   - Create admin user
-   - Add credentials (Docker Hub, Git)
-
-4. **Create Pipeline Job**
-   - New Item → Pipeline
-   - Configure SCM: Git repository URL
+4. **Create Pipeline:**
+   - New Item → `todo-app-pipeline` → Pipeline
+   - Definition: Pipeline script from SCM
+   - SCM: Git
+   - Repository URL: `https://github.com/flakozz-rama/devops-finl.git`
+   - Branch: `*/main`
    - Script Path: `Jenkinsfile_AbayK`
 
-### Part 3: Kubernetes Setup
+## Demo Commands
 
-1. **Start Minikube**
-   ```bash
-   minikube start --driver=docker
-   ```
+### Docker Demo
+```bash
+# Show containers
+docker ps
 
-2. **Deploy Application**
-   ```bash
-   kubectl apply -f k8s/configmap_AbayK.yaml
-   kubectl apply -f k8s/secret_AbayK.yaml
-   kubectl apply -f k8s/pvc_AbayK.yaml
-   kubectl apply -f k8s/deployment_AbayK.yaml
-   kubectl apply -f k8s/service_AbayK.yaml
-   kubectl apply -f k8s/hpa_AbayK.yaml
-   ```
+# Show images
+docker images
 
-3. **Verify Deployment**
-   ```bash
-   kubectl get pods
-   kubectl get services
-   kubectl rollout status deployment/todo-app
-   ```
+# Show logs
+docker logs todo-app
 
-4. **Access Application**
-   ```bash
-   minikube service todo-app-service --url
-   ```
-
-5. **Rolling Update & Rollback**
-   ```bash
-   # Update
-   kubectl set image deployment/todo-app todo-app=abayk/todo-app:1.1.0
-   kubectl rollout status deployment/todo-app
-
-   # Rollback
-   kubectl rollout undo deployment/todo-app
-   ```
-
-### Part 4: Ansible Automation
-
-1. **Run Complete Setup**
-   ```bash
-   ansible-playbook -i ansible/inventory_AbayK.ini ansible/playbook_AbayK.yml
-   ```
-
-2. **Deploy to Kubernetes with Ansible**
-   ```bash
-   ansible-playbook -i ansible/inventory_AbayK.ini ansible/deploy_k8s_AbayK.yml
-   ```
-
-3. **Using Ansible Vault**
-   ```bash
-   # Encrypt secrets
-   ansible-vault encrypt ansible/vault_secrets.yml
-
-   # Run with vault
-   ansible-playbook playbook_AbayK.yml --ask-vault-pass
-   ```
-
-## CI/CD Pipeline Flow
-
-```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│  Checkout   │───▶│    Build    │───▶│    Test     │───▶│   Analyze   │
-│   (Git)     │    │  (Gradle)   │    │  (JUnit)    │    │ (Optional)  │
-└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
-                                                                │
-                                                                ▼
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│   Deploy    │◀───│    Push     │◀───│   Build     │◀───│  Artifact   │
-│   (K8s)     │    │  (Registry) │    │  (Docker)   │    │  Archive    │
-└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+# Test API
+curl http://localhost:8080/api/todos
+curl -X POST http://localhost:8080/api/todos -H "Content-Type: application/json" -d '{"title":"Test Task","completed":false}'
 ```
 
-### Pipeline Stages:
+### Kubernetes Demo
+```bash
+# Show all resources
+kubectl get all
 
-1. **Checkout** - Clone repository from Git
-2. **Build** - Compile with `./gradlew clean build`
-3. **Test** - Run tests with `./gradlew test`
-4. **Code Analysis** - Static analysis (Checkstyle)
-5. **Docker Build** - Build image with dynamic tag
-6. **Docker Push** - Push to registry (main/develop only)
-7. **Deploy** - Deploy to Kubernetes (main only)
+# Show pods
+kubectl get pods -o wide
+
+# Show services
+kubectl get svc
+
+# Show deployments
+kubectl get deployments
+
+# Show HPA
+kubectl get hpa
+
+# Show logs
+kubectl logs -l app=todo-app
+
+# Describe pod
+kubectl describe pod -l app=todo-app
+
+# Scale deployment
+kubectl scale deployment/todo-app --replicas=3
+kubectl get pods -w
+
+# Rolling update
+kubectl set image deployment/todo-app todo-app=abayk/todo-app:1.1.0
+kubectl rollout status deployment/todo-app
+
+# Rollback
+kubectl rollout undo deployment/todo-app
+```
+
+### Ansible Demo
+```bash
+# Check syntax
+ansible-playbook ansible/playbook_AbayK.yml --syntax-check
+
+# Dry run
+ansible-playbook -i ansible/inventory_AbayK.ini ansible/playbook_AbayK.yml --check
+
+# Run playbook
+ansible-playbook -i ansible/inventory_AbayK.ini ansible/playbook_AbayK.yml
+```
+
+## CI/CD Pipeline Stages
+
+```
+Checkout -> Build -> Test -> Docker Build -> Docker Push -> Deploy (K8s)
+```
+
+1. **Checkout** - Clone from Git
+2. **Build** - `./gradlew clean build`
+3. **Test** - `./gradlew test`
+4. **Docker Build** - Build image
+5. **Docker Push** - Push to registry
+6. **Deploy** - Deploy to Kubernetes
 
 ## API Endpoints
 
@@ -236,85 +270,41 @@ devops-final/
 | POST | `/api/todos` | Create new todo |
 | PUT | `/api/todos/{id}` | Update todo |
 | DELETE | `/api/todos/{id}` | Delete todo |
-| GET | `/api/todos/status/{completed}` | Get todos by status |
-| GET | `/api/todos/search?title=` | Search todos |
 | GET | `/actuator/health` | Health check |
 
-## Useful Commands
+## Troubleshooting
 
-### Docker
+### Jenkins not starting
 ```bash
-# Build image
-docker build -t abayk/todo-app:1.0.0 -f docker/Dockerfile_AbayK .
-
-# View image layers
-docker history abayk/todo-app:1.0.0
-
-# Start services
-docker-compose -f docker/docker-compose_AbayK.yml up -d
-
-# View logs
-docker-compose -f docker/docker-compose_AbayK.yml logs -f
-
-# Stop services
-docker-compose -f docker/docker-compose_AbayK.yml down
+sudo journalctl -xeu jenkins.service | tail -50
+sudo systemctl reset-failed jenkins
+sudo systemctl start jenkins
 ```
 
-### Kubernetes
+### Port 8080 occupied
 ```bash
-# Deploy
-kubectl apply -f k8s/
-
-# Get resources
-kubectl get pods,svc,deploy
-
-# Describe pod
-kubectl describe pod <pod-name>
-
-# View logs
-kubectl logs -f deployment/todo-app
-
-# Scale
-kubectl scale deployment todo-app --replicas=3
-
-# Rollback
-kubectl rollout undo deployment/todo-app
-
-# Delete resources
-kubectl delete -f k8s/
+sudo lsof -i :8080
+# Change Jenkins to port 8081 (see Part 0, step 4)
 ```
 
-### Ansible
+### Minikube not enough memory
 ```bash
-# Syntax check
-ansible-playbook playbook_AbayK.yml --syntax-check
-
-# Dry run
-ansible-playbook playbook_AbayK.yml --check
-
-# Run on specific group
-ansible-playbook -i inventory_AbayK.ini playbook_AbayK.yml -l jenkins_servers
+minikube delete
+minikube start --driver=docker --memory=1800mb
 ```
 
-## Verification Evidence
+### Disk space issues
+```bash
+df -h
+docker system prune -af
+sudo apt-get clean
+```
 
-After deployment, verify:
-
-1. **Jenkins Pipeline**
-   - Screenshot of successful pipeline execution
-   - All stages passed (green)
-
-2. **Kubernetes Pods**
-   ```bash
-   kubectl get pods -o wide
-   kubectl get hpa
-   ```
-
-3. **Application Response**
-   ```bash
-   curl http://<SERVICE_IP>:8080/api/todos
-   curl http://<SERVICE_IP>:8080/actuator/health
-   ```
+### Expand LVM partition
+```bash
+sudo lvextend -l +100%FREE /dev/ubuntu-vg/ubuntu-lv
+sudo resize2fs /dev/ubuntu-vg/ubuntu-lv
+```
 
 ## Author
 **AbayK** - DevOps Final Project
