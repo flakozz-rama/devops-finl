@@ -1,310 +1,736 @@
 # DevOps Final Project - ToDo Application
 **Author:** AbayK
 
-## Architecture Diagram
+---
+
+## Содержание
+1. [Описание проекта](#описание-проекта)
+2. [Архитектура](#архитектура)
+3. [Технологии](#технологии)
+4. [Структура проекта](#структура-проекта)
+5. [Быстрый старт](#быстрый-старт)
+6. [Полная установка](#полная-установка)
+7. [Docker](#docker)
+8. [Kubernetes](#kubernetes)
+9. [Jenkins CI/CD](#jenkins-cicd)
+10. [Ansible](#ansible)
+11. [API приложения](#api-приложения)
+12. [Команды для демонстрации](#команды-для-демонстрации)
+13. [Устранение неполадок](#устранение-неполадок)
+
+---
+
+## Описание проекта
+
+Это DevOps проект, демонстрирующий полный цикл CI/CD для Spring Boot приложения ToDo List.
+
+**Что делает приложение:**
+- REST API для управления задачами (создание, чтение, обновление, удаление)
+- Хранение данных в PostgreSQL
+- Health check endpoint для мониторинга
+
+**Что демонстрирует проект:**
+- Контейнеризация с Docker
+- Оркестрация с Kubernetes
+- CI/CD пайплайн с Jenkins
+- Автоматизация инфраструктуры с Ansible
+
+---
+
+## Архитектура
 
 ```
 +------------------------------------------------------------------+
 |                    DevOps Pipeline Architecture                    |
 +------------------------------------------------------------------+
 |                                                                    |
+|   Developer -> Git -> Jenkins -> Docker -> Kubernetes              |
+|                                                                    |
 |   +--------+    +----------+    +--------+    +----------------+  |
 |   |  Git   |--->| Jenkins  |--->| Docker |--->|  Kubernetes    |  |
-|   | (SCM)  |    | (CI/CD)  |    |Registry|    | (Deployment)   |  |
+|   | (SCM)  |    | (CI/CD)  |    | Image  |    | (Deployment)   |  |
 |   +--------+    +----------+    +--------+    +----------------+  |
-|       |              |              |                |             |
-|       v              v              |                v             |
-|   +--------+    +----------+       |        +----------------+    |
-|   | Source |    |  Build   |       |        |  +-----------+ |    |
-|   |  Code  |    |  & Test  |       |        |  | ToDo App  | |    |
-|   +--------+    +----------+       |        |  | (Pod x2)  | |    |
-|                                    |        |  +-----------+ |    |
-|                                    |        |       |        |    |
-|                                    |        |       v        |    |
-|                                    |        |  +-----------+ |    |
-|                                    |        |  |PostgreSQL | |    |
-|                                    |        |  |  (Pod)    | |    |
-|                                    |        |  +-----------+ |    |
-|                                    |        +----------------+    |
-|                                                                    |
-|   +--------------------------------------------------------------+|
-|   |              Ansible (Infrastructure Automation)              ||
-|   +--------------------------------------------------------------+|
+|                      |                               |             |
+|                      v                               v             |
+|               +------------+                 +-------------+       |
+|               | 1.Checkout |                 | ToDo App    |       |
+|               | 2.Build    |                 | (2 replicas)|       |
+|               | 3.Test     |                 +-------------+       |
+|               | 4.Docker   |                        |              |
+|               | 5.Deploy   |                        v              |
+|               +------------+                 +-------------+       |
+|                                              | PostgreSQL  |       |
+|                                              +-------------+       |
 +------------------------------------------------------------------+
 ```
 
-## Quick Start (After VM Restart)
+### Как это работает:
 
-```bash
-# Start all services
-cd ~/opt/devops-project/docker && docker compose -f docker-compose_AbayK.yml up -d && minikube start --driver=docker && sleep 30 && kubectl get pods
+1. **Developer** пушит код в **Git**
+2. **Jenkins** автоматически запускает пайплайн:
+   - Клонирует репозиторий
+   - Собирает приложение (Gradle)
+   - Запускает тесты
+   - Собирает Docker образ
+   - Деплоит в Kubernetes
+3. **Kubernetes** управляет контейнерами:
+   - Поддерживает 2 реплики приложения
+   - Автоматически перезапускает упавшие поды
+   - Балансирует нагрузку между подами
 
-# Check services
-docker ps && kubectl get pods && kubectl get svc && sudo systemctl status jenkins
-```
+---
 
-**Access URLs (VM IP: 192.168.0.42):**
-- Jenkins: http://192.168.0.42:8081
-- Todo App (Docker): http://192.168.0.42:8080
-- Todo App (K8s): http://192.168.0.42:30080
+## Технологии
 
-## Project Structure
+| Компонент | Технология | Версия | Описание |
+|-----------|------------|--------|----------|
+| Приложение | Spring Boot | 3.2.x | Java REST API |
+| База данных | PostgreSQL | 15 | Хранение данных |
+| Контейнеризация | Docker | 29.x | Упаковка приложения |
+| Оркестрация | Kubernetes | 1.34 | Управление контейнерами |
+| K8s локально | Minikube | 1.37 | Локальный кластер |
+| CI/CD | Jenkins | 2.528 | Автоматизация |
+| IaC | Ansible | 9.x | Автоматизация инфраструктуры |
+| VM | Ubuntu Server | 24.04 | Операционная система |
+| Виртуализация | UTM | - | VM на Mac (ARM64) |
+
+---
+
+## Структура проекта
 
 ```
 devops-final/
-├── app/                          # Spring Boot Application
-│   ├── src/main/java/           # Java source code
-│   ├── src/main/resources/      # Application configuration
-│   ├── src/test/                # Test files
-│   ├── build.gradle             # Gradle build configuration
-│   └── gradlew                  # Gradle wrapper
-├── docker/                       # Docker Configuration
-│   ├── Dockerfile_AbayK         # Multi-stage Dockerfile (ARM64)
-│   ├── docker-compose_AbayK.yml # Docker Compose configuration
-│   └── .env.example             # Environment variables template
-├── k8s/                          # Kubernetes Manifests
-│   ├── deployment_AbayK.yaml    # Deployment configuration
-│   ├── service_AbayK.yaml       # Service definitions
-│   ├── configmap_AbayK.yaml     # ConfigMap
-│   ├── secret_AbayK.yaml        # Secrets (Base64 encoded)
-│   ├── hpa_AbayK.yaml           # Horizontal Pod Autoscaler
-│   └── pvc_AbayK.yaml           # Persistent Volume Claim
-├── ansible/                      # Ansible Automation
-│   ├── inventory_AbayK.ini      # Inventory file
-│   ├── playbook_AbayK.yml       # Main playbook
-│   ├── deploy_k8s_AbayK.yml     # K8s deployment playbook
-│   └── roles/                   # Ansible roles
-├── scripts/                      # Setup scripts
-│   ├── setup_vm_AbayK.sh        # VM setup script
-│   ├── install_docker_AbayK.sh  # Docker installation
-│   └── install_all_AbayK.sh     # Complete stack installation
-├── Jenkinsfile_AbayK            # Jenkins pipeline
-└── README.md                    # This file
+├── app/                              # Spring Boot приложение
+│   ├── src/main/java/               # Исходный код
+│   │   └── com/devops/todo/
+│   │       ├── TodoApplication.java # Точка входа
+│   │       ├── controller/          # REST контроллеры
+│   │       ├── model/               # Модели данных
+│   │       ├── repository/          # JPA репозитории
+│   │       ├── service/             # Бизнес-логика
+│   │       └── exception/           # Обработка ошибок
+│   ├── src/main/resources/
+│   │   └── application.yml          # Конфигурация
+│   ├── build.gradle                 # Зависимости Gradle
+│   └── gradlew                      # Gradle wrapper
+│
+├── docker/                           # Docker конфигурация
+│   ├── Dockerfile_AbayK             # Multi-stage сборка
+│   ├── docker-compose_AbayK.yml     # Compose для локального запуска
+│   ├── .env                         # Переменные окружения
+│   └── init-db.sql                  # Инициализация БД
+│
+├── k8s/                              # Kubernetes манифесты
+│   ├── configmap_AbayK.yaml         # Конфигурация приложения
+│   ├── secret_AbayK.yaml            # Секреты (пароли)
+│   ├── pvc_AbayK.yaml               # Persistent Volume для БД
+│   ├── deployment_AbayK.yaml        # Деплойменты (app + postgres)
+│   ├── service_AbayK.yaml           # Сервисы (networking)
+│   └── hpa_AbayK.yaml               # Автоскейлинг
+│
+├── ansible/                          # Ansible автоматизация
+│   ├── inventory_AbayK.ini          # Список серверов
+│   ├── playbook_AbayK.yml           # Главный плейбук
+│   ├── deploy_k8s_AbayK.yml         # Деплой в K8s
+│   └── roles/                       # Роли (docker, jenkins, k8s)
+│
+├── scripts/                          # Bash скрипты
+│   ├── setup_vm_AbayK.sh            # Настройка VM
+│   ├── install_docker_AbayK.sh      # Установка Docker
+│   └── install_all_AbayK.sh         # Установка всего стека
+│
+├── Jenkinsfile_AbayK                 # Полный пайплайн
+├── Jenkinsfile_Demo                  # Упрощённый пайплайн для демо
+└── README.md                         # Этот файл
 ```
 
-## Complete Setup Guide
+---
 
-### Part 0: VM Setup (UTM + Ubuntu Server)
+## Быстрый старт
 
-1. **Create VM in UTM:**
-   - Ubuntu Server 24.04 ARM64
-   - RAM: 4096 MB (minimum 2GB)
-   - Disk: 20 GB
-   - Network: Bridged
-
-2. **Clone project:**
-   ```bash
-   git clone https://github.com/flakozz-rama/devops-finl.git ~/opt/devops-project
-   cd ~/opt/devops-project
-   ```
-
-3. **Run complete installation:**
-   ```bash
-   chmod +x scripts/*.sh
-   sudo ./scripts/install_all_AbayK.sh
-   ```
-
-   This installs: Docker, Ansible, Jenkins, kubectl, Minikube
-
-4. **Fix Jenkins port (if 8080 is occupied):**
-   ```bash
-   sudo mkdir -p /etc/systemd/system/jenkins.service.d
-   echo -e '[Service]\nEnvironment="JENKINS_PORT=8081"' | sudo tee /etc/systemd/system/jenkins.service.d/override.conf
-   sudo systemctl daemon-reload
-   sudo systemctl restart jenkins
-   ```
-
-5. **Configure firewall:**
-   ```bash
-   sudo ufw allow ssh
-   sudo ufw allow 8080/tcp
-   sudo ufw allow 8081/tcp
-   sudo ufw allow 30080/tcp
-   sudo ufw enable
-   ```
-
-### Part 1: Docker Setup
+### После перезапуска VM выполни:
 
 ```bash
-# Build image
-cd ~/opt/devops-project
-docker build -t abayk/todo-app:1.0.0 -f docker/Dockerfile_AbayK .
-
-# Run with Docker Compose
-cd docker
-cp .env.example .env
+# 1. Запустить Docker контейнеры
+cd ~/opt/devops-project/docker
 docker compose -f docker-compose_AbayK.yml up -d
 
-# Verify
-docker ps
-curl http://localhost:8080/actuator/health
-curl http://localhost:8080/api/todos
-```
-
-### Part 2: Kubernetes Setup
-
-```bash
-# Start Minikube
+# 2. Запустить Minikube
 minikube start --driver=docker
 
-# Load image to Minikube
+# 3. Проверить Jenkins (запускается автоматически)
+sudo systemctl status jenkins
+
+# 4. Проверить всё
+docker ps
+kubectl get pods
+kubectl get svc
+```
+
+### Доступ к сервисам:
+
+| Сервис | URL | Логин/Пароль |
+|--------|-----|--------------|
+| Jenkins | http://<VM_IP>:8081 | admin / (см. ниже) |
+| Todo App (Docker) | http://<VM_IP>:8080 | - |
+| Todo App (K8s) | http://<VM_IP>:30080 | - |
+
+**Получить IP VM:**
+```bash
+hostname -I | awk '{print $1}'
+```
+
+**Получить пароль Jenkins:**
+```bash
+sudo cat /var/lib/jenkins/secrets/initialAdminPassword
+```
+
+---
+
+## Полная установка
+
+### Шаг 1: Создание VM в UTM
+
+1. Скачай Ubuntu Server 24.04 ARM64
+2. В UTM создай новую VM:
+   - **RAM:** 4096 MB (минимум 2GB)
+   - **Disk:** 20 GB
+   - **Network:** Bridged (для доступа с Mac)
+3. Установи Ubuntu Server
+4. Настрой SSH доступ
+
+### Шаг 2: Клонирование проекта
+
+```bash
+# На VM
+git clone https://github.com/flakozz-rama/devops-finl.git ~/opt/devops-project
+cd ~/opt/devops-project
+```
+
+### Шаг 3: Установка всего стека
+
+```bash
+chmod +x scripts/*.sh
+sudo ./scripts/install_all_AbayK.sh
+```
+
+**Скрипт установит:**
+- Docker + Docker Compose
+- Ansible
+- Jenkins
+- kubectl
+- Minikube
+
+### Шаг 4: Настройка Jenkins порта
+
+Jenkins по умолчанию на порту 8080, но там уже Docker приложение:
+
+```bash
+sudo mkdir -p /etc/systemd/system/jenkins.service.d
+echo -e '[Service]\nEnvironment="JENKINS_PORT=8081"' | sudo tee /etc/systemd/system/jenkins.service.d/override.conf
+sudo systemctl daemon-reload
+sudo systemctl restart jenkins
+```
+
+### Шаг 5: Настройка Firewall
+
+```bash
+sudo ufw allow ssh
+sudo ufw allow 8080/tcp   # Todo App
+sudo ufw allow 8081/tcp   # Jenkins
+sudo ufw allow 30080/tcp  # K8s NodePort
+sudo ufw enable
+```
+
+### Шаг 6: Добавление Jenkins в группу Docker
+
+```bash
+sudo usermod -aG docker jenkins
+sudo systemctl restart jenkins
+```
+
+---
+
+## Docker
+
+### Что такое Docker?
+Docker - это платформа для контейнеризации приложений. Контейнер содержит приложение и все его зависимости.
+
+### Dockerfile (docker/Dockerfile_AbayK)
+
+```dockerfile
+# Этап 1: Сборка (builder)
+FROM gradle:8.5-jdk17 AS builder
+WORKDIR /app
+COPY app/ .
+RUN ./gradlew clean build -x test
+
+# Этап 2: Runtime (минимальный образ)
+FROM eclipse-temurin:17-jre
+COPY --from=builder /app/build/libs/todo-app.jar app.jar
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]
+```
+
+**Почему multi-stage:**
+- Финальный образ меньше (только JRE, без Gradle)
+- Безопаснее (нет исходников и build tools)
+
+### Команды Docker
+
+```bash
+# Сборка образа
+docker build -t abayk/todo-app:1.0.0 -f docker/Dockerfile_AbayK .
+
+# Запуск с Docker Compose
+cd docker
+docker compose -f docker-compose_AbayK.yml up -d
+
+# Просмотр контейнеров
+docker ps
+
+# Логи
+docker logs todo-app
+docker logs todo-postgres
+
+# Остановка
+docker compose -f docker-compose_AbayK.yml down
+
+# Очистка
+docker system prune -af
+```
+
+### Docker Compose (docker/docker-compose_AbayK.yml)
+
+```yaml
+services:
+  todo-app:
+    build: ...
+    ports:
+      - "8080:8080"      # Маппинг портов host:container
+    depends_on:
+      - todo-postgres    # Ждать запуска БД
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://todo-postgres:5432/tododb
+
+  todo-postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=tododb
+      - POSTGRES_USER=todouser
+      - POSTGRES_PASSWORD=todopass
+    volumes:
+      - postgres-data:/var/lib/postgresql/data  # Persistent storage
+```
+
+---
+
+## Kubernetes
+
+### Что такое Kubernetes?
+Kubernetes (K8s) - система оркестрации контейнеров. Автоматически управляет развёртыванием, масштабированием и восстановлением приложений.
+
+### Основные концепции
+
+| Концепция | Описание |
+|-----------|----------|
+| **Pod** | Минимальная единица, один или несколько контейнеров |
+| **Deployment** | Управляет репликами подов, обновлениями |
+| **Service** | Сетевой доступ к подам (load balancing) |
+| **ConfigMap** | Конфигурация (не секретная) |
+| **Secret** | Секреты (пароли, ключи) |
+| **PVC** | Persistent Volume Claim - постоянное хранилище |
+| **HPA** | Horizontal Pod Autoscaler - автомасштабирование |
+
+### Kubernetes манифесты
+
+**ConfigMap (k8s/configmap_AbayK.yaml):**
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: todo-app-config
+data:
+  SPRING_PROFILES_ACTIVE: "kubernetes"
+  SERVER_PORT: "8080"
+```
+
+**Deployment (k8s/deployment_AbayK.yaml):**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todo-app
+spec:
+  replicas: 2                    # 2 копии приложения
+  selector:
+    matchLabels:
+      app: todo-app
+  template:
+    spec:
+      containers:
+      - name: todo-app
+        image: abayk/todo-app:1.0.0
+        ports:
+        - containerPort: 8080
+        envFrom:
+        - configMapRef:
+            name: todo-app-config
+```
+
+**Service (k8s/service_AbayK.yaml):**
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: todo-app-service
+spec:
+  type: NodePort              # Доступ извне кластера
+  ports:
+  - port: 8080
+    targetPort: 8080
+    nodePort: 30080           # Внешний порт
+  selector:
+    app: todo-app
+```
+
+### Команды Kubernetes
+
+```bash
+# Запуск Minikube
+minikube start --driver=docker
+
+# Загрузка образа в Minikube
 minikube image load abayk/todo-app:1.0.0
 
-# Deploy application
-cd ~/opt/devops-project
+# Применение манифестов
 kubectl apply -f k8s/
 
-# Verify
+# Просмотр ресурсов
+kubectl get all
 kubectl get pods
 kubectl get svc
 kubectl get deployments
 kubectl get hpa
 
-# Access application
+# Детальная информация
+kubectl describe pod <pod-name>
+kubectl describe deployment todo-app
+
+# Логи
+kubectl logs -l app=todo-app
+kubectl logs <pod-name>
+
+# Масштабирование
+kubectl scale deployment/todo-app --replicas=3
+
+# Rolling Update (обновление без downtime)
+kubectl set image deployment/todo-app todo-app=abayk/todo-app:1.1.0
+kubectl rollout status deployment/todo-app
+
+# Откат
+kubectl rollout undo deployment/todo-app
+kubectl rollout history deployment/todo-app
+
+# Доступ к приложению
 kubectl port-forward --address 0.0.0.0 svc/todo-app-service 30080:8080
+
+# Удаление
+kubectl delete -f k8s/
 ```
 
-### Part 3: Jenkins Setup
+---
 
-1. **Access Jenkins:** http://192.168.0.42:8081
+## Jenkins CI/CD
 
-2. **Get initial password:**
+### Что такое Jenkins?
+Jenkins - сервер автоматизации для CI/CD (Continuous Integration / Continuous Deployment).
+
+### Настройка Jenkins
+
+1. **Открой:** http://<VM_IP>:8081
+
+2. **Первый вход:**
    ```bash
    sudo cat /var/lib/jenkins/secrets/initialAdminPassword
    ```
 
-3. **Install plugins:** Pipeline, Git, Docker Pipeline
+3. **Установи плагины:**
+   - Pipeline
+   - Git
+   - Docker Pipeline
 
-4. **Create Pipeline:**
-   - New Item → `todo-app-pipeline` → Pipeline
-   - Definition: Pipeline script from SCM
+4. **Создай Pipeline:**
+   - New Item → `todo-app-demo` → Pipeline
+   - Pipeline → Definition: `Pipeline script from SCM`
    - SCM: Git
-   - Repository URL: `https://github.com/flakozz-rama/devops-finl.git`
+   - URL: `https://github.com/flakozz-rama/devops-finl.git`
    - Branch: `*/main`
-   - Script Path: `Jenkinsfile_AbayK`
+   - Script Path: `Jenkinsfile_Demo`
+   - Save → Build Now
 
-## Demo Commands
+### Jenkinsfile_Demo (упрощённый)
 
-### Docker Demo
-```bash
-# Show containers
-docker ps
+```groovy
+pipeline {
+    agent any
 
-# Show images
-docker images
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
 
-# Show logs
-docker logs todo-app
+        stage('Build') {
+            steps {
+                dir('app') {
+                    sh './gradlew clean build -x test'
+                }
+            }
+        }
 
-# Test API
-curl http://localhost:8080/api/todos
-curl -X POST http://localhost:8080/api/todos -H "Content-Type: application/json" -d '{"title":"Test Task","completed":false}'
+        stage('Test') {
+            steps {
+                dir('app') {
+                    sh './gradlew test'
+                }
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                sh 'docker build -t abayk/todo-app:${BUILD_NUMBER} -f docker/Dockerfile_AbayK .'
+            }
+        }
+
+        stage('Deploy to K8s') {
+            steps {
+                sh 'kubectl apply -f k8s/'
+            }
+        }
+    }
+}
 ```
 
-### Kubernetes Demo
-```bash
-# Show all resources
-kubectl get all
+### Этапы пайплайна
 
-# Show pods
+```
+┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
+│ Checkout │ → │  Build   │ → │   Test   │ → │  Docker  │ → │  Deploy  │
+│   (Git)  │   │ (Gradle) │   │ (JUnit)  │   │  Build   │   │  (K8s)   │
+└──────────┘   └──────────┘   └──────────┘   └──────────┘   └──────────┘
+```
+
+---
+
+## Ansible
+
+### Что такое Ansible?
+Ansible - инструмент автоматизации инфраструктуры. Позволяет автоматизировать настройку серверов.
+
+### Inventory (ansible/inventory_AbayK.ini)
+
+```ini
+[local]
+localhost ansible_connection=local
+
+[devops_servers]
+# server1 ansible_host=192.168.1.100 ansible_user=devops
+```
+
+### Playbook (ansible/playbook_AbayK.yml)
+
+```yaml
+- name: Setup DevOps Server
+  hosts: local
+  become: yes
+  roles:
+    - common      # Базовые пакеты
+    - docker      # Docker installation
+    - jenkins     # Jenkins installation
+    - kubernetes  # Minikube + kubectl
+```
+
+### Команды Ansible
+
+```bash
+# Проверка синтаксиса
+ansible-playbook ansible/playbook_AbayK.yml --syntax-check
+
+# Dry run (без изменений)
+ansible-playbook -i ansible/inventory_AbayK.ini ansible/playbook_AbayK.yml --check
+
+# Запуск
+ansible-playbook -i ansible/inventory_AbayK.ini ansible/playbook_AbayK.yml
+
+# Деплой в K8s
+ansible-playbook -i ansible/inventory_AbayK.ini ansible/deploy_k8s_AbayK.yml
+```
+
+---
+
+## API приложения
+
+### Endpoints
+
+| Method | URL | Описание | Пример |
+|--------|-----|----------|--------|
+| GET | `/api/todos` | Получить все задачи | - |
+| GET | `/api/todos/{id}` | Получить задачу по ID | `/api/todos/1` |
+| POST | `/api/todos` | Создать задачу | JSON body |
+| PUT | `/api/todos/{id}` | Обновить задачу | JSON body |
+| DELETE | `/api/todos/{id}` | Удалить задачу | - |
+| GET | `/actuator/health` | Health check | - |
+
+### Примеры запросов
+
+```bash
+# Health check
+curl http://localhost:8080/actuator/health
+
+# Получить все задачи
+curl http://localhost:8080/api/todos
+
+# Создать задачу
+curl -X POST http://localhost:8080/api/todos \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Выполнить проект","completed":false}'
+
+# Обновить задачу
+curl -X PUT http://localhost:8080/api/todos/1 \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Выполнить проект","completed":true}'
+
+# Удалить задачу
+curl -X DELETE http://localhost:8080/api/todos/1
+```
+
+---
+
+## Команды для демонстрации
+
+### Полный сценарий демо
+
+```bash
+# 1. Показать VM
+hostname -I
+uname -a
+
+# 2. Docker
+docker ps
+docker images
+curl http://localhost:8080/actuator/health
+
+# 3. Kubernetes
+kubectl get nodes
+kubectl get all
 kubectl get pods -o wide
 
-# Show services
-kubectl get svc
+# 4. Создать задачу через API
+curl -X POST http://localhost:8080/api/todos \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Demo Task","completed":false}'
 
-# Show deployments
-kubectl get deployments
-
-# Show HPA
-kubectl get hpa
-
-# Show logs
-kubectl logs -l app=todo-app
-
-# Describe pod
-kubectl describe pod -l app=todo-app
-
-# Scale deployment
+# 5. Масштабирование K8s
 kubectl scale deployment/todo-app --replicas=3
 kubectl get pods -w
 
-# Rolling update
+# 6. Jenkins - показать в браузере
+# http://<VM_IP>:8081
+
+# 7. Rolling Update
 kubectl set image deployment/todo-app todo-app=abayk/todo-app:1.1.0
 kubectl rollout status deployment/todo-app
 
-# Rollback
+# 8. Rollback
 kubectl rollout undo deployment/todo-app
 ```
 
-### Ansible Demo
+---
+
+## Устранение неполадок
+
+### Jenkins не запускается
+
 ```bash
-# Check syntax
-ansible-playbook ansible/playbook_AbayK.yml --syntax-check
+# Проверить статус
+sudo systemctl status jenkins
 
-# Dry run
-ansible-playbook -i ansible/inventory_AbayK.ini ansible/playbook_AbayK.yml --check
-
-# Run playbook
-ansible-playbook -i ansible/inventory_AbayK.ini ansible/playbook_AbayK.yml
-```
-
-## CI/CD Pipeline Stages
-
-```
-Checkout -> Build -> Test -> Docker Build -> Docker Push -> Deploy (K8s)
-```
-
-1. **Checkout** - Clone from Git
-2. **Build** - `./gradlew clean build`
-3. **Test** - `./gradlew test`
-4. **Docker Build** - Build image
-5. **Docker Push** - Push to registry
-6. **Deploy** - Deploy to Kubernetes
-
-## API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/todos` | Get all todos |
-| GET | `/api/todos/{id}` | Get todo by ID |
-| POST | `/api/todos` | Create new todo |
-| PUT | `/api/todos/{id}` | Update todo |
-| DELETE | `/api/todos/{id}` | Delete todo |
-| GET | `/actuator/health` | Health check |
-
-## Troubleshooting
-
-### Jenkins not starting
-```bash
+# Посмотреть логи
 sudo journalctl -xeu jenkins.service | tail -50
+
+# Перезапустить
 sudo systemctl reset-failed jenkins
 sudo systemctl start jenkins
 ```
 
-### Port 8080 occupied
-```bash
-sudo lsof -i :8080
-# Change Jenkins to port 8081 (see Part 0, step 4)
-```
+### Minikube не работает
 
-### Minikube not enough memory
 ```bash
+# Проверить статус
+minikube status
+
+# Перезапустить
+minikube stop
+minikube start --driver=docker
+
+# Полный сброс
 minikube delete
-minikube start --driver=docker --memory=1800mb
+minikube start --driver=docker
 ```
 
-### Disk space issues
+### Порт 8080 занят
+
 ```bash
+# Проверить кто занял порт
+sudo lsof -i :8080
+
+# Jenkins перенести на 8081 (см. выше)
+```
+
+### Не хватает места на диске
+
+```bash
+# Проверить место
 df -h
-docker system prune -af
-sudo apt-get clean
-```
 
-### Expand LVM partition
-```bash
+# Очистить Docker
+docker system prune -af
+
+# Очистить apt cache
+sudo apt-get clean
+
+# Расширить LVM раздел
 sudo lvextend -l +100%FREE /dev/ubuntu-vg/ubuntu-lv
 sudo resize2fs /dev/ubuntu-vg/ubuntu-lv
 ```
 
-## Author
+### kubectl не видит кластер
+
+```bash
+# "no route to host" - Minikube не запущен
+minikube start --driver=docker
+
+# Проверить контекст
+kubectl config current-context
+```
+
+### Pods в статусе ImagePullBackOff
+
+```bash
+# Загрузить образ в Minikube
+docker build -t abayk/todo-app:1.0.0 -f docker/Dockerfile_AbayK .
+minikube image load abayk/todo-app:1.0.0
+
+# Перезапустить поды
+kubectl rollout restart deployment/todo-app
+```
+
+---
+
+## Автор
+
 **AbayK** - DevOps Final Project
+
+**GitHub:** https://github.com/flakozz-rama/devops-finl
