@@ -1,0 +1,113 @@
+// Jenkinsfile_Demo - Simple Demo Pipeline for ToDo Application
+// Author: AbayK
+// Description: Demo CI/CD pipeline without external credentials
+
+pipeline {
+    agent any
+
+    environment {
+        APP_NAME = 'todo-app'
+        DOCKER_IMAGE = 'abayk/todo-app'
+        DOCKER_TAG = "${BUILD_NUMBER}"
+    }
+
+    options {
+        timestamps()
+        timeout(time: 15, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '5'))
+    }
+
+    stages {
+        // Stage 1: Checkout
+        stage('Checkout') {
+            steps {
+                echo '========== Stage 1: Checkout =========='
+                checkout scm
+
+                script {
+                    env.GIT_COMMIT_SHORT = sh(
+                        script: 'git rev-parse --short HEAD',
+                        returnStdout: true
+                    ).trim()
+                }
+                echo "Git Commit: ${env.GIT_COMMIT_SHORT}"
+            }
+        }
+
+        // Stage 2: Build
+        stage('Build') {
+            steps {
+                echo '========== Stage 2: Build =========='
+                dir('app') {
+                    sh 'chmod +x gradlew'
+                    sh './gradlew clean build -x test --no-daemon'
+                }
+            }
+            post {
+                success {
+                    echo 'Build SUCCESS!'
+                    archiveArtifacts artifacts: 'app/build/libs/*.jar', fingerprint: true
+                }
+            }
+        }
+
+        // Stage 3: Test
+        stage('Test') {
+            steps {
+                echo '========== Stage 3: Test =========='
+                dir('app') {
+                    sh './gradlew test --no-daemon'
+                }
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: 'app/build/test-results/test/*.xml'
+                }
+            }
+        }
+
+        // Stage 4: Docker Build
+        stage('Docker Build') {
+            steps {
+                echo '========== Stage 4: Docker Build =========='
+                sh """
+                    docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} -f docker/Dockerfile_AbayK .
+                    docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
+                    docker images | grep ${DOCKER_IMAGE}
+                """
+            }
+        }
+
+        // Stage 5: Deploy to Kubernetes
+        stage('Deploy to K8s') {
+            steps {
+                echo '========== Stage 5: Deploy to Kubernetes =========='
+                sh """
+                    # Load image to Minikube
+                    minikube image load ${DOCKER_IMAGE}:${DOCKER_TAG} || true
+
+                    # Apply K8s manifests
+                    kubectl apply -f k8s/
+
+                    # Check deployment status
+                    kubectl get pods
+                    kubectl get svc
+                """
+            }
+        }
+    }
+
+    post {
+        always {
+            echo '=========================================='
+            echo '          Pipeline Completed!'
+            echo '=========================================='
+        }
+        success {
+            echo 'Pipeline SUCCESS - All stages passed!'
+        }
+        failure {
+            echo 'Pipeline FAILED - Check logs for details'
+        }
+    }
+}
